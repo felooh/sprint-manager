@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
+import { useSession } from 'next-auth/react';
 import { AppState, Member, Sprint, Task, SyncStatus } from './types';
 import { uid, sheetsBatchGet, sheetsAppend, sheetsRewrite, ensureSheets } from './sheets';
 import { toast } from 'sonner';
@@ -22,6 +23,7 @@ interface DataContextValue {
 const DataContext = createContext<DataContextValue | null>(null);
 
 export function DataProvider({ children }: { children: ReactNode }) {
+  const { status } = useSession();
   const [state, setState] = useState<AppState>({ members: [], sprints: [], tasks: [] });
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
 
@@ -48,7 +50,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  useEffect(() => { loadAll(); }, [loadAll]);
+  useEffect(() => {
+    // Only load data when authenticated
+    if (status === 'authenticated') {
+      loadAll();
+    }
+  }, [status, loadAll]);
 
   const activeSprint = state.sprints.find(s => s.active === 'TRUE') ?? state.sprints[0];
 

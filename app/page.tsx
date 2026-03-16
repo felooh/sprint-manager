@@ -9,7 +9,8 @@ import TaskList  from '@/components/TaskList';
 import Team      from '@/components/Team';
 import Sprints   from '@/components/Sprints';
 import Report    from '@/components/Report';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, LogOut } from 'lucide-react';
+import { useSession, signOut } from 'next-auth/react';
 
 const TABS = [
   { id: 'overview', label: 'Overview'     },
@@ -22,6 +23,7 @@ const TABS = [
 
 export default function Home() {
   const { syncStatus, loadAll, activeSprint } = useData();
+  const { data: session } = useSession();
   const [tab, setTab] = useState('overview');
 
   return (
@@ -32,6 +34,11 @@ export default function Home() {
           <p className="text-sm text-gray-500 mt-0.5">Afyangu Web &nbsp;·&nbsp; Afyangu Mobile &nbsp;·&nbsp; P360 Mobile</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          {session?.user?.email && (
+            <span className="text-xs text-gray-500 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-200">
+              {session.user.email}
+            </span>
+          )}
           {activeSprint && (
             <span className="text-xs bg-blue-50 text-blue-700 border border-blue-200 px-3 py-1 rounded-full font-medium">
               Active: {activeSprint.name}
@@ -41,6 +48,14 @@ export default function Home() {
           <button onClick={loadAll} className="flex items-center gap-1.5 text-sm px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors bg-white">
             <RefreshCw size={13} className={syncStatus === 'loading' || syncStatus === 'syncing' ? 'animate-spin' : ''} />
             Refresh
+          </button>
+          <button
+            onClick={() => signOut({ callbackUrl: '/login' })}
+            className="flex items-center gap-1.5 text-sm px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-red-50 hover:border-red-200 hover:text-red-600 transition-colors bg-white text-gray-700"
+            title="Sign out"
+          >
+            <LogOut size={13} />
+            Sign out
           </button>
         </div>
       </div>

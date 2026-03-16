@@ -155,7 +155,7 @@ export async function POST(req: NextRequest) {
       const existing = (meta.sheets ?? []).map(
         (s: { properties: { title: string } }) => s.properties.title
       );
-      const needed   = ['Members', 'Sprints', 'Tasks'];
+      const needed   = ['Members', 'Sprints', 'Tasks', 'AllowedEmails'];
       const toCreate = needed.filter(n => !existing.includes(n));
 
       if (toCreate.length > 0) {
@@ -169,11 +169,25 @@ export async function POST(req: NextRequest) {
           Members: ['ID','Name','Role','Product'],
           Sprints: ['ID','Name','Start','End','Active'],
           Tasks:   ['ID','Title','Product','SprintID','Status','Priority','AssigneeID','Description'],
+          AllowedEmails: ['Email'],
         };
         for (const name of toCreate) {
           await fetch(
             `${BASE}/values/${encodeURIComponent(name + '!A1')}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
             { method: 'POST', headers, body: JSON.stringify({ values: [headerMap[name]] }) }
+          );
+        }
+
+        // Add initial allowed emails if creating AllowedEmails sheet
+        if (toCreate.includes('AllowedEmails')) {
+          const initialEmails = [
+            ['you@gmail.com'],
+            ['yourteammember@gmail.com'],
+            ['gathagefelix@gmail.com'],
+          ];
+          await fetch(
+            `${BASE}/values/${encodeURIComponent('AllowedEmails!A2')}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
+            { method: 'POST', headers, body: JSON.stringify({ values: initialEmails }) }
           );
         }
       }
