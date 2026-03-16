@@ -32,7 +32,7 @@ export interface AppState {
 
 export type SyncStatus = 'idle' | 'loading' | 'syncing' | 'ok' | 'error';
 
-export const PRODUCTS = ['Afyangu Web', 'Afyangu Mobile', 'P360 Mobile'];
+export const PRODUCTS = ['Afyangu Web', 'Afyangu Mobile', 'P360 Mobile', 'NIMIMI'];
 export const STATUSES = ['To Do', 'In Progress', 'Review', 'Done', 'Blocked'];
 export const ROLES    = ['Frontend Dev','Mobile Dev','UI/UX Designer','QA Engineer','Backend Dev','Tech Lead','Other'];
 export const PRIORITIES = ['High', 'Medium', 'Low'];
@@ -41,6 +41,7 @@ export const PRODUCT_BADGE: Record<string, string> = {
   'Afyangu Web':    'bg-blue-100 text-blue-800',
   'Afyangu Mobile': 'bg-purple-100 text-purple-800',
   'P360 Mobile':    'bg-emerald-100 text-emerald-800',
+  'NIMIMI':         'bg-amber-100 text-amber-800',
 };
 export const STATUS_BADGE: Record<string, string> = {
   'To Do':      'bg-gray-200 text-gray-700',

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import { DataProvider } from '@/lib/data-context';
+import { Toaster } from 'sonner';
 
 export const metadata: Metadata = {
   title: 'Sprint Manager — Afyangu & P360',
@@ -12,6 +13,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body className="bg-gray-50 min-h-screen">
         <DataProvider>{children}</DataProvider>
+        <Toaster position="top-right" richColors closeButton />
       </body>
     </html>
   );

@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
 import { AppState, Member, Sprint, Task, SyncStatus } from './types';
 import { uid, sheetsBatchGet, sheetsAppend, sheetsRewrite, ensureSheets } from './sheets';
+import { toast } from 'sonner';
 
 interface DataContextValue {
   state: AppState;
@@ -41,6 +42,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
     } catch (e) {
       console.error(e);
       setSync('error');
+      toast.error('Failed to load data', {
+        description: e instanceof Error ? e.message : 'An unexpected error occurred'
+      });
     }
   }, []);
 
@@ -51,66 +55,150 @@ export function DataProvider({ children }: { children: ReactNode }) {
   // ── Members ──
   const addMember = async (m: Omit<Member, 'id'>) => {
     setSync('syncing');
-    const newM = { id: uid(), ...m };
-    await sheetsAppend('Members', [[newM.id, newM.name, newM.role, newM.product]]);
-    setState(prev => ({ ...prev, members: [...prev.members, newM] }));
-    setSync('ok');
+    try {
+      const newM = { id: uid(), ...m };
+      await sheetsAppend('Members', [[newM.id, newM.name, newM.role, newM.product]]);
+      setState(prev => ({ ...prev, members: [...prev.members, newM] }));
+      setSync('ok');
+      toast.success('Member added successfully', {
+        description: `${newM.name} has been added to the team`
+      });
+    } catch (e) {
+      setSync('error');
+      toast.error('Failed to add member', {
+        description: e instanceof Error ? e.message : 'An unexpected error occurred'
+      });
+      throw e;
+    }
   };
 
   const removeMember = async (id: string) => {
     setSync('syncing');
-    const members = state.members.filter(m => m.id !== id);
-    await sheetsRewrite('Members', members.map(m => [m.id, m.name, m.role, m.product]));
-    setState(prev => ({ ...prev, members }));
-    setSync('ok');
+    try {
+      const memberToRemove = state.members.find(m => m.id === id);
+      const members = state.members.filter(m => m.id !== id);
+      await sheetsRewrite('Members', members.map(m => [m.id, m.name, m.role, m.product]));
+      setState(prev => ({ ...prev, members }));
+      setSync('ok');
+      toast.success('Member removed', {
+        description: memberToRemove ? `${memberToRemove.name} has been removed from the team` : 'Member removed successfully'
+      });
+    } catch (e) {
+      setSync('error');
+      toast.error('Failed to remove member', {
+        description: e instanceof Error ? e.message : 'An unexpected error occurred'
+      });
+      throw e;
+    }
   };
 
   // ── Sprints ──
   const addSprint = async (s: Omit<Sprint, 'id' | 'active'>) => {
     setSync('syncing');
-    const ns = { id: uid(), ...s, active: 'FALSE' };
-    await sheetsAppend('Sprints', [[ns.id, ns.name, ns.start, ns.end, ns.active]]);
-    setState(prev => ({ ...prev, sprints: [...prev.sprints, ns] }));
-    setSync('ok');
+    try {
+      const ns = { id: uid(), ...s, active: 'FALSE' };
+      await sheetsAppend('Sprints', [[ns.id, ns.name, ns.start, ns.end, ns.active]]);
+      setState(prev => ({ ...prev, sprints: [...prev.sprints, ns] }));
+      setSync('ok');
+      toast.success('Sprint created', {
+        description: `${ns.name} (${ns.start} → ${ns.end})`
+      });
+    } catch (e) {
+      setSync('error');
+      toast.error('Failed to create sprint', {
+        description: e instanceof Error ? e.message : 'An unexpected error occurred'
+      });
+      throw e;
+    }
   };
 
   const removeSprint = async (id: string) => {
     setSync('syncing');
-    const sprints = state.sprints.filter(s => s.id !== id);
-    await sheetsRewrite('Sprints', sprints.map(s => [s.id, s.name, s.start, s.end, s.active]));
-    setState(prev => ({ ...prev, sprints }));
-    setSync('ok');
+    try {
+      const sprintToRemove = state.sprints.find(s => s.id === id);
+      const sprints = state.sprints.filter(s => s.id !== id);
+      await sheetsRewrite('Sprints', sprints.map(s => [s.id, s.name, s.start, s.end, s.active]));
+      setState(prev => ({ ...prev, sprints }));
+      setSync('ok');
+      toast.success('Sprint deleted', {
+        description: sprintToRemove ? `${sprintToRemove.name} has been deleted` : 'Sprint deleted successfully'
+      });
+    } catch (e) {
+      setSync('error');
+      toast.error('Failed to delete sprint', {
+        description: e instanceof Error ? e.message : 'An unexpected error occurred'
+      });
+      throw e;
+    }
   };
 
   const setActiveSprint = async (id: string) => {
     setSync('syncing');
-    const sprints = state.sprints.map(s => ({ ...s, active: s.id === id ? 'TRUE' : 'FALSE' }));
-    await sheetsRewrite('Sprints', sprints.map(s => [s.id, s.name, s.start, s.end, s.active]));
-    setState(prev => ({ ...prev, sprints }));
-    setSync('ok');
+    try {
+      const newActiveSprint = state.sprints.find(s => s.id === id);
+      const sprints = state.sprints.map(s => ({ ...s, active: s.id === id ? 'TRUE' : 'FALSE' }));
+      await sheetsRewrite('Sprints', sprints.map(s => [s.id, s.name, s.start, s.end, s.active]));
+      setState(prev => ({ ...prev, sprints }));
+      setSync('ok');
+      toast.success('Active sprint updated', {
+        description: newActiveSprint ? `${newActiveSprint.name} is now the active sprint` : 'Sprint activated'
+      });
+    } catch (e) {
+      setSync('error');
+      toast.error('Failed to update active sprint', {
+        description: e instanceof Error ? e.message : 'An unexpected error occurred'
+      });
+      throw e;
+    }
   };
 
   // ── Tasks ──
   const saveTask = async (t: Omit<Task, 'id'> & { id?: string }) => {
     setSync('syncing');
-    if (t.id) {
-      const tasks = state.tasks.map(tk => tk.id === t.id ? { ...tk, ...t } as Task : tk);
-      await sheetsRewrite('Tasks', tasks.map(tk => [tk.id, tk.title, tk.product, tk.sprintId, tk.status, tk.priority, tk.assigneeId, tk.desc]));
-      setState(prev => ({ ...prev, tasks }));
-    } else {
-      const nt = { id: uid(), ...t } as Task;
-      await sheetsAppend('Tasks', [[nt.id, nt.title, nt.product, nt.sprintId, nt.status, nt.priority, nt.assigneeId, nt.desc]]);
-      setState(prev => ({ ...prev, tasks: [...prev.tasks, nt] }));
+    try {
+      if (t.id) {
+        const tasks = state.tasks.map(tk => tk.id === t.id ? { ...tk, ...t } as Task : tk);
+        await sheetsRewrite('Tasks', tasks.map(tk => [tk.id, tk.title, tk.product, tk.sprintId, tk.status, tk.priority, tk.assigneeId, tk.desc]));
+        setState(prev => ({ ...prev, tasks }));
+        toast.success('Task updated', {
+          description: `${t.title} has been updated`
+        });
+      } else {
+        const nt = { id: uid(), ...t } as Task;
+        await sheetsAppend('Tasks', [[nt.id, nt.title, nt.product, nt.sprintId, nt.status, nt.priority, nt.assigneeId, nt.desc]]);
+        setState(prev => ({ ...prev, tasks: [...prev.tasks, nt] }));
+        toast.success('Task created', {
+          description: `${nt.title} has been created`
+        });
+      }
+      setSync('ok');
+    } catch (e) {
+      setSync('error');
+      toast.error(t.id ? 'Failed to update task' : 'Failed to create task', {
+        description: e instanceof Error ? e.message : 'An unexpected error occurred'
+      });
+      throw e;
     }
-    setSync('ok');
   };
 
   const deleteTask = async (id: string) => {
     setSync('syncing');
-    const tasks = state.tasks.filter(t => t.id !== id);
-    await sheetsRewrite('Tasks', tasks.map(t => [t.id, t.title, t.product, t.sprintId, t.status, t.priority, t.assigneeId, t.desc]));
-    setState(prev => ({ ...prev, tasks }));
-    setSync('ok');
+    try {
+      const taskToDelete = state.tasks.find(t => t.id === id);
+      const tasks = state.tasks.filter(t => t.id !== id);
+      await sheetsRewrite('Tasks', tasks.map(t => [t.id, t.title, t.product, t.sprintId, t.status, t.priority, t.assigneeId, t.desc]));
+      setState(prev => ({ ...prev, tasks }));
+      setSync('ok');
+      toast.success('Task deleted', {
+        description: taskToDelete ? `${taskToDelete.title} has been deleted` : 'Task deleted successfully'
+      });
+    } catch (e) {
+      setSync('error');
+      toast.error('Failed to delete task', {
+        description: e instanceof Error ? e.message : 'An unexpected error occurred'
+      });
+      throw e;
+    }
   };
 
   return (
