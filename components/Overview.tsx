@@ -1,8 +1,8 @@
 'use client';
 
 import { useData } from '@/lib/data-context';
-import { PRODUCTS, AVATAR_COLORS } from '@/lib/types';
-import { MetricCard, ProgressBar, ProductBadge, PriorityBadge, Spinner } from '@/components/ui';
+import { PRODUCTS, AVATAR_COLORS, getDaysDue } from '@/lib/types';
+import { MetricCard, ProgressBar, ProductBadge, PriorityBadge, DueBadge, Spinner } from '@/components/ui';
 import { AlertTriangle } from 'lucide-react';
 
 const PFILL = ['bg-blue-500', 'bg-purple-500', 'bg-emerald-500'];
@@ -109,6 +109,7 @@ export default function Overview() {
                   <div className="flex items-center gap-2 mt-1 flex-wrap">
                     <ProductBadge product={t.product} />
                     <PriorityBadge priority={t.priority} />
+                    <DueBadge daysDue={getDaysDue(t)} />
                     {m && <span className="text-xs text-gray-500">{m.name}</span>}
                   </div>
                   {t.desc && <p className="text-xs text-gray-500 mt-1">{t.desc}</p>}

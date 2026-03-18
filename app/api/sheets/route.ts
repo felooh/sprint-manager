@@ -168,7 +168,7 @@ export async function POST(req: NextRequest) {
         const headerMap: Record<string, string[]> = {
           Members: ['ID','Name','Role','Product'],
           Sprints: ['ID','Name','Start','End','Active'],
-          Tasks:   ['ID','Title','Product','SprintID','Status','Priority','AssigneeID','Description'],
+          Tasks:   ['ID','Title','Product','SprintID','Status','Priority','AssigneeID','Description','CreatedAt','UpdatedAt'],
           AllowedEmails: ['Email'],
         };
         for (const name of toCreate) {

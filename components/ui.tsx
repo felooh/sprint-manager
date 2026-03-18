@@ -23,6 +23,29 @@ export function PriorityBadge({ priority }: { priority: string }) {
   return <Badge label={priority} className={PRIORITY_BADGE[priority] ?? 'bg-gray-100 text-gray-700'} />;
 }
 
+export function DueBadge({ daysDue }: { daysDue: number }) {
+  if (daysDue === 0) return null;
+
+  let className = '';
+  let label = '';
+
+  if (daysDue < 3) {
+    className = 'bg-gray-100 text-gray-600';
+    label = `${daysDue}d`;
+  } else if (daysDue < 7) {
+    className = 'bg-yellow-100 text-yellow-800';
+    label = `${daysDue}d due`;
+  } else if (daysDue < 14) {
+    className = 'bg-orange-100 text-orange-800';
+    label = `${daysDue}d due`;
+  } else {
+    className = 'bg-red-100 text-red-800';
+    label = `${daysDue}d due`;
+  }
+
+  return <Badge label={label} className={className} />;
+}
+
 export function Avatar({ name, index, size = 'md' }: { name: string; index: number; size?: 'sm' | 'md' }) {
   const [bg, tc] = AVATAR_COLORS[index % AVATAR_COLORS.length];
   const initials = name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();

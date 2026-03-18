@@ -22,6 +22,8 @@ export interface Task {
   priority: string;
   assigneeId: string;
   desc: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface AppState {
@@ -65,3 +67,13 @@ export const AVATAR_COLORS = [
   ['#FAC775','#633806'],
   ['#C0DD97','#27500A'],
 ];
+
+// Calculate days since creation (for overdue status)
+export function getDaysDue(task: Task): number {
+  if (task.status === 'Done') return 0;
+  const created = new Date(task.createdAt);
+  const now = new Date();
+  const diffTime = now.getTime() - created.getTime();
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+  return diffDays;
+}

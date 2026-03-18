@@ -2,8 +2,8 @@
 
 import { useState } from 'react';
 import { useData } from '@/lib/data-context';
-import { Task, PRODUCTS } from '@/lib/types';
-import { ProductBadge, StatusBadge, PriorityBadge, Spinner } from '@/components/ui';
+import { Task, PRODUCTS, getDaysDue } from '@/lib/types';
+import { ProductBadge, StatusBadge, PriorityBadge, DueBadge, Spinner } from '@/components/ui';
 import TaskModal from '@/components/TaskModal';
 import { Plus } from 'lucide-react';
 
@@ -13,6 +13,7 @@ export default function TaskList() {
   const [fstat, setFstat]   = useState('');
   const [fassn, setFassn]   = useState('');
   const [fsprint, setFsprint] = useState('');
+  const [sortBy, setSortBy] = useState('');
   const [editTask, setEditTask] = useState<Task | null | undefined>(undefined);
 
   if (syncStatus === 'loading') return <Spinner />;
@@ -22,6 +23,13 @@ export default function TaskList() {
   if (fstat)   tasks = tasks.filter(t => t.status === fstat);
   if (fassn)   tasks = tasks.filter(t => t.assigneeId === fassn);
   if (fsprint) tasks = tasks.filter(t => t.sprintId === fsprint);
+
+  // Sort by days due if selected
+  if (sortBy === 'dueDesc') {
+    tasks = [...tasks].sort((a, b) => getDaysDue(b) - getDaysDue(a));
+  } else if (sortBy === 'dueAsc') {
+    tasks = [...tasks].sort((a, b) => getDaysDue(a) - getDaysDue(b));
+  }
 
   return (
     <div>
@@ -42,6 +50,11 @@ export default function TaskList() {
         <select value={fsprint} onChange={e => setFsprint(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:border-gray-400">
           <option value="">All sprints</option>
           {state.sprints.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
+        <select value={sortBy} onChange={e => setSortBy(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:border-gray-400">
+          <option value="">Sort by...</option>
+          <option value="dueDesc">Most overdue first</option>
+          <option value="dueAsc">Least overdue first</option>
         </select>
         <button onClick={() => setEditTask(null)} className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-700 transition-colors ml-auto">
           <Plus size={14} /> Add task
@@ -64,6 +77,7 @@ export default function TaskList() {
                       <StatusBadge status={t.status} />
                       <PriorityBadge priority={t.priority} />
                       <ProductBadge product={t.product} />
+                      <DueBadge daysDue={getDaysDue(t)} />
                       {m && <span className="text-xs text-gray-500">{m.name}</span>}
                       {sp && <span className="text-xs text-gray-400">{sp.name}</span>}
                     </div>

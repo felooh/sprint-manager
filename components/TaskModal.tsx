@@ -14,15 +14,16 @@ export default function TaskModal({ task, onClose }: Props) {
   const { state, saveTask, deleteTask, activeSprint } = useData();
   const [form, setForm] = useState({
     title: '', product: PRODUCTS[0], sprintId: '', status: 'To Do',
-    priority: 'Medium', assigneeId: '', desc: '',
+    priority: 'Medium', assigneeId: '', desc: '', createdAt: '', updatedAt: '',
   });
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (task) {
-      setForm({ title: task.title, product: task.product, sprintId: task.sprintId, status: task.status, priority: task.priority, assigneeId: task.assigneeId, desc: task.desc });
+      setForm({ title: task.title, product: task.product, sprintId: task.sprintId, status: task.status, priority: task.priority, assigneeId: task.assigneeId, desc: task.desc, createdAt: task.createdAt, updatedAt: task.updatedAt });
     } else {
-      setForm({ title: '', product: PRODUCTS[0], sprintId: activeSprint?.id ?? '', status: 'To Do', priority: 'Medium', assigneeId: '', desc: '' });
+      const now = new Date().toISOString();
+      setForm({ title: '', product: PRODUCTS[0], sprintId: activeSprint?.id ?? '', status: 'To Do', priority: 'Medium', assigneeId: '', desc: '', createdAt: now, updatedAt: now });
     }
   }, [task, activeSprint]);
 

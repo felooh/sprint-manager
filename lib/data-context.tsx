@@ -33,12 +33,23 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setSync('loading');
     try {
       await ensureSheets();
-      const [mRows, sRows, tRows] = await sheetsBatchGet(['Members!A2:D', 'Sprints!A2:E', 'Tasks!A2:H']);
+      const [mRows, sRows, tRows] = await sheetsBatchGet(['Members!A2:D', 'Sprints!A2:E', 'Tasks!A2:J']);
 
       setState({
         members: mRows.filter(r => r[0]).map(r => ({ id: r[0], name: r[1]||'', role: r[2]||'', product: r[3]||'' })),
         sprints: sRows.filter(r => r[0]).map(r => ({ id: r[0], name: r[1]||'', start: r[2]||'', end: r[3]||'', active: r[4]||'FALSE' })),
-        tasks:   tRows.filter(r => r[0]).map(r => ({ id: r[0], title: r[1]||'', product: r[2]||'', sprintId: r[3]||'', status: r[4]||'To Do', priority: r[5]||'Medium', assigneeId: r[6]||'', desc: r[7]||'' })),
+        tasks:   tRows.filter(r => r[0]).map(r => ({
+          id: r[0],
+          title: r[1]||'',
+          product: r[2]||'',
+          sprintId: r[3]||'',
+          status: r[4]||'To Do',
+          priority: r[5]||'Medium',
+          assigneeId: r[6]||'',
+          desc: r[7]||'',
+          createdAt: r[8]||new Date().toISOString(),
+          updatedAt: r[9]||new Date().toISOString()
+        })),
       });
       setSync('ok');
     } catch (e) {
@@ -164,15 +175,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setSync('syncing');
     try {
       if (t.id) {
-        const tasks = state.tasks.map(tk => tk.id === t.id ? { ...tk, ...t } as Task : tk);
-        await sheetsRewrite('Tasks', tasks.map(tk => [tk.id, tk.title, tk.product, tk.sprintId, tk.status, tk.priority, tk.assigneeId, tk.desc]));
+        const now = new Date().toISOString();
+        const tasks = state.tasks.map(tk => tk.id === t.id ? { ...tk, ...t, updatedAt: now } as Task : tk);
+        await sheetsRewrite('Tasks', tasks.map(tk => [tk.id, tk.title, tk.product, tk.sprintId, tk.status, tk.priority, tk.assigneeId, tk.desc, tk.createdAt, tk.updatedAt]));
         setState(prev => ({ ...prev, tasks }));
         toast.success('Task updated', {
           description: `${t.title} has been updated`
         });
       } else {
-        const nt = { id: uid(), ...t } as Task;
-        await sheetsAppend('Tasks', [[nt.id, nt.title, nt.product, nt.sprintId, nt.status, nt.priority, nt.assigneeId, nt.desc]]);
+        const now = new Date().toISOString();
+        const nt = { id: uid(), ...t, createdAt: now, updatedAt: now } as Task;
+        await sheetsAppend('Tasks', [[nt.id, nt.title, nt.product, nt.sprintId, nt.status, nt.priority, nt.assigneeId, nt.desc, nt.createdAt, nt.updatedAt]]);
         setState(prev => ({ ...prev, tasks: [...prev.tasks, nt] }));
         toast.success('Task created', {
           description: `${nt.title} has been created`
@@ -193,7 +206,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     try {
       const taskToDelete = state.tasks.find(t => t.id === id);
       const tasks = state.tasks.filter(t => t.id !== id);
-      await sheetsRewrite('Tasks', tasks.map(t => [t.id, t.title, t.product, t.sprintId, t.status, t.priority, t.assigneeId, t.desc]));
+      await sheetsRewrite('Tasks', tasks.map(t => [t.id, t.title, t.product, t.sprintId, t.status, t.priority, t.assigneeId, t.desc, t.createdAt, t.updatedAt]));
       setState(prev => ({ ...prev, tasks }));
       setSync('ok');
       toast.success('Task deleted', {

@@ -2,8 +2,8 @@
 
 import { useState } from 'react';
 import { useData } from '@/lib/data-context';
-import { Task, STATUSES, PRODUCTS, AVATAR_COLORS } from '@/lib/types';
-import { ProductBadge, PriorityBadge, StatusBadge, Spinner } from '@/components/ui';
+import { Task, STATUSES, PRODUCTS, AVATAR_COLORS, getDaysDue } from '@/lib/types';
+import { ProductBadge, PriorityBadge, StatusBadge, DueBadge, Spinner } from '@/components/ui';
 import TaskModal from '@/components/TaskModal';
 import { Plus } from 'lucide-react';
 
@@ -57,6 +57,7 @@ export default function Board() {
                         <div className="flex items-center gap-1 flex-wrap">
                           <ProductBadge product={t.product} />
                           <PriorityBadge priority={t.priority} />
+                          <DueBadge daysDue={getDaysDue(t)} />
                           {m && (
                             <div className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold ml-auto" style={{ background: bg, color: tc }}>
                               {m.name.split(' ').map((w:string) => w[0]).join('').slice(0,2).toUpperCase()}
