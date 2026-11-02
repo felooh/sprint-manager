@@ -2,8 +2,9 @@
 
 import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
 import { useSession } from 'next-auth/react';
-import { AppState, Member, Sprint, Task, SyncStatus } from './types';
+import { AppState, Goal, GoalTrack, Member, SyncStatus } from './types';
 import { uid, sheetsBatchGet, sheetsAppend, sheetsRewrite, ensureSheets } from './sheets';
+import { goalRow, trackRow, logRow, parseGoal, parseTrack, parseLog, normaliseTrack, newSteps } from './goals';
 import { toast } from 'sonner';
 
 interface DataContextValue {
@@ -11,20 +12,30 @@ interface DataContextValue {
   syncStatus: SyncStatus;
   loadAll: () => Promise<void>;
   addMember: (m: Omit<Member, 'id'>) => Promise<void>;
+  updateMember: (m: Member) => Promise<void>;
   removeMember: (id: string) => Promise<void>;
-  addSprint: (s: Omit<Sprint, 'id' | 'active'>) => Promise<void>;
-  removeSprint: (id: string) => Promise<void>;
-  setActiveSprint: (id: string) => Promise<void>;
-  saveTask: (t: Omit<Task, 'id'> & { id?: string }) => Promise<void>;
-  deleteTask: (id: string) => Promise<void>;
-  activeSprint: Sprint | undefined;
+  saveGoal: (g: Pick<Goal, 'title' | 'desc' | 'priority' | 'quarter'> & { id?: string }, products: string[], setup?: NewTrackSetup) => Promise<void>;
+  deleteGoal: (id: string) => Promise<void>;
+  saveTrack: (t: GoalTrack) => Promise<void>;
 }
+
+// Starting values for the tracks of a new goal task
+export interface NewTrackSetup {
+  ownerIds: string[];
+  targetDate: string;
+  optionalSteps: string[];
+}
+
+const GOAL_RANGES = ['Goals!A2:G', 'GoalTracks!A2:J'];
+
+// Existing sheet rows use the old product name
+const productName = (p: string) => (p === 'P360 Mobile' ? 'P360 Mobile App' : p);
 
 const DataContext = createContext<DataContextValue | null>(null);
 
 export function DataProvider({ children }: { children: ReactNode }) {
-  const { status } = useSession();
-  const [state, setState] = useState<AppState>({ members: [], sprints: [], tasks: [] });
+  const { status, data: session } = useSession();
+  const [state, setState] = useState<AppState>({ members: [], goals: [], tracks: [], log: [] });
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
 
   const setSync = (s: SyncStatus) => setSyncStatus(s);
@@ -33,23 +44,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setSync('loading');
     try {
       await ensureSheets();
-      const [mRows, sRows, tRows] = await sheetsBatchGet(['Members!A2:D', 'Sprints!A2:E', 'Tasks!A2:J']);
+      const [mRows, gRows, gtRows, lRows] = await sheetsBatchGet(['Members!A2:D', ...GOAL_RANGES, 'ProgressLog!A2:I']);
 
       setState({
-        members: mRows.filter(r => r[0]).map(r => ({ id: r[0], name: r[1]||'', role: r[2]||'', product: r[3]||'' })),
-        sprints: sRows.filter(r => r[0]).map(r => ({ id: r[0], name: r[1]||'', start: r[2]||'', end: r[3]||'', active: r[4]||'FALSE' })),
-        tasks:   tRows.filter(r => r[0]).map(r => ({
-          id: r[0],
-          title: r[1]||'',
-          product: r[2]||'',
-          sprintId: r[3]||'',
-          status: r[4]||'To Do',
-          priority: r[5]||'Medium',
-          assigneeId: r[6]||'',
-          desc: r[7]||'',
-          createdAt: r[8]||new Date().toISOString(),
-          updatedAt: r[9]||new Date().toISOString()
-        })),
+        members: mRows.filter(r => r[0]).map(r => ({ id: r[0], name: r[1]||'', role: r[2]||'', product: productName(r[3]||'') })),
+        goals:  gRows.filter(r => r[0]).map(parseGoal),
+        tracks: gtRows.filter(r => r[0]).map(parseTrack),
+        log:    lRows.filter(r => r[0]).map(parseLog),
       });
       setSync('ok');
     } catch (e) {
@@ -68,8 +69,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   }, [status, loadAll]);
 
-  const activeSprint = state.sprints.find(s => s.active === 'TRUE') ?? state.sprints[0];
-
   // ── Members ──
   const addMember = async (m: Omit<Member, 'id'>) => {
     setSync('syncing');
@@ -84,6 +83,23 @@ export function DataProvider({ children }: { children: ReactNode }) {
     } catch (e) {
       setSync('error');
       toast.error('Failed to add member', {
+        description: e instanceof Error ? e.message : 'An unexpected error occurred'
+      });
+      throw e;
+    }
+  };
+
+  const updateMember = async (m: Member) => {
+    setSync('syncing');
+    try {
+      const members = state.members.map(x => x.id === m.id ? m : x);
+      await sheetsRewrite('Members', members.map(x => [x.id, x.name, x.role, x.product]));
+      setState(prev => ({ ...prev, members }));
+      setSync('ok');
+      toast.success('Member updated', { description: m.name });
+    } catch (e) {
+      setSync('error');
+      toast.error('Failed to update member', {
         description: e instanceof Error ? e.message : 'An unexpected error occurred'
       });
       throw e;
@@ -110,111 +126,100 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // ── Sprints ──
-  const addSprint = async (s: Omit<Sprint, 'id' | 'active'>) => {
+  // ── Goals ──
+  // Goals and tracks are re-read before each write, because a rewrite replaces the
+  // whole sheet and this page's copy may be missing someone else's latest update.
+  const readGoalData = async () => {
+    const [gRows, gtRows] = await sheetsBatchGet(GOAL_RANGES);
+    return { goals: gRows.filter(r => r[0]).map(parseGoal), tracks: gtRows.filter(r => r[0]).map(parseTrack) };
+  };
+
+  const logEntry = (t: GoalTrack, at: string) => ({
+    id: uid(), trackId: t.id, goalId: t.goalId, product: t.product, progress: t.progress,
+    health: t.health, note: t.note, at, by: session?.user?.email ?? '',
+  });
+
+  const saveGoal = async (g: Pick<Goal, 'title' | 'desc' | 'priority' | 'quarter'> & { id?: string }, products: string[], setup?: NewTrackSetup) => {
     setSync('syncing');
     try {
-      const ns = { id: uid(), ...s, active: 'FALSE' };
-      await sheetsAppend('Sprints', [[ns.id, ns.name, ns.start, ns.end, ns.active]]);
-      setState(prev => ({ ...prev, sprints: [...prev.sprints, ns] }));
+      const now = new Date().toISOString();
+      const fresh = await readGoalData();
+      const prev = g.id ? fresh.goals.find(x => x.id === g.id) : undefined;
+      if (g.id && !prev) throw new Error('This goal task was deleted by someone else. Refresh to see the latest.');
+
+      const goal: Goal = { id: g.id ?? uid(), title: g.title, desc: g.desc, priority: g.priority, quarter: g.quarter, createdAt: prev?.createdAt ?? now, updatedAt: now };
+      const goals = prev ? fresh.goals.map(x => x.id === goal.id ? goal : x) : [...fresh.goals, goal];
+      if (prev) await sheetsRewrite('Goals', goals.map(goalRow));
+      else await sheetsAppend('Goals', [goalRow(goal)]);
+
+      const mine = fresh.tracks.filter(t => t.goalId === goal.id);
+      const added: GoalTrack[] = products.filter(p => !mine.some(t => t.product === p)).map(product => ({
+        id: uid(), goalId: goal.id, product, progress: 0, health: 'Not Started', ownerIds: setup?.ownerIds ?? [], targetDate: setup?.targetDate ?? '', note: '',
+        steps: newSteps().map(st => ({ ...st, enabled: st.enabled || !!setup?.optionalSteps.includes(st.key) })), updatedAt: now,
+      }));
+      const removed = mine.filter(t => !products.includes(t.product));
+      const tracks = [...fresh.tracks.filter(t => !removed.includes(t)), ...added];
+      if (removed.length) await sheetsRewrite('GoalTracks', tracks.map(trackRow));
+      else if (added.length) await sheetsAppend('GoalTracks', added.map(trackRow));
+
+      const entries = added.map(t => logEntry(t, now));
+      if (entries.length) await sheetsAppend('ProgressLog', entries.map(logRow));
+
+      setState(s => ({ ...s, goals, tracks, log: [...s.log, ...entries] }));
       setSync('ok');
-      toast.success('Sprint created', {
-        description: `${ns.name} (${ns.start} → ${ns.end})`
-      });
+      toast.success(prev ? 'Goal task updated' : 'Goal task created', { description: goal.title });
     } catch (e) {
       setSync('error');
-      toast.error('Failed to create sprint', {
+      toast.error('Failed to save goal task', {
         description: e instanceof Error ? e.message : 'An unexpected error occurred'
       });
       throw e;
     }
   };
 
-  const removeSprint = async (id: string) => {
+  const deleteGoal = async (id: string) => {
     setSync('syncing');
     try {
-      const sprintToRemove = state.sprints.find(s => s.id === id);
-      const sprints = state.sprints.filter(s => s.id !== id);
-      await sheetsRewrite('Sprints', sprints.map(s => [s.id, s.name, s.start, s.end, s.active]));
-      setState(prev => ({ ...prev, sprints }));
+      const fresh = await readGoalData();
+      const tracks = fresh.tracks.filter(t => t.goalId !== id);
+      const goals = fresh.goals.filter(g => g.id !== id);
+      await sheetsRewrite('GoalTracks', tracks.map(trackRow));
+      await sheetsRewrite('Goals', goals.map(goalRow));
+      setState(s => ({ ...s, goals, tracks }));
       setSync('ok');
-      toast.success('Sprint deleted', {
-        description: sprintToRemove ? `${sprintToRemove.name} has been deleted` : 'Sprint deleted successfully'
-      });
+      toast.success('Goal task deleted');
     } catch (e) {
       setSync('error');
-      toast.error('Failed to delete sprint', {
+      toast.error('Failed to delete goal task', {
         description: e instanceof Error ? e.message : 'An unexpected error occurred'
       });
       throw e;
     }
   };
 
-  const setActiveSprint = async (id: string) => {
+  const saveTrack = async (t: GoalTrack) => {
     setSync('syncing');
     try {
-      const newActiveSprint = state.sprints.find(s => s.id === id);
-      const sprints = state.sprints.map(s => ({ ...s, active: s.id === id ? 'TRUE' : 'FALSE' }));
-      await sheetsRewrite('Sprints', sprints.map(s => [s.id, s.name, s.start, s.end, s.active]));
-      setState(prev => ({ ...prev, sprints }));
-      setSync('ok');
-      toast.success('Active sprint updated', {
-        description: newActiveSprint ? `${newActiveSprint.name} is now the active sprint` : 'Sprint activated'
-      });
-    } catch (e) {
-      setSync('error');
-      toast.error('Failed to update active sprint', {
-        description: e instanceof Error ? e.message : 'An unexpected error occurred'
-      });
-      throw e;
-    }
-  };
+      const now = new Date().toISOString();
+      const fresh = await readGoalData();
+      const prev = fresh.tracks.find(x => x.id === t.id);
+      if (!prev) throw new Error('This goal task was removed by someone else. Refresh to see the latest.');
 
-  // ── Tasks ──
-  const saveTask = async (t: Omit<Task, 'id'> & { id?: string }) => {
-    setSync('syncing');
-    try {
-      if (t.id) {
-        const now = new Date().toISOString();
-        const tasks = state.tasks.map(tk => tk.id === t.id ? { ...tk, ...t, updatedAt: now } as Task : tk);
-        await sheetsRewrite('Tasks', tasks.map(tk => [tk.id, tk.title, tk.product, tk.sprintId, tk.status, tk.priority, tk.assigneeId, tk.desc, tk.createdAt, tk.updatedAt]));
-        setState(prev => ({ ...prev, tasks }));
-        toast.success('Task updated', {
-          description: `${t.title} has been updated`
-        });
-      } else {
-        const now = new Date().toISOString();
-        const nt = { id: uid(), ...t, createdAt: now, updatedAt: now } as Task;
-        await sheetsAppend('Tasks', [[nt.id, nt.title, nt.product, nt.sprintId, nt.status, nt.priority, nt.assigneeId, nt.desc, nt.createdAt, nt.updatedAt]]);
-        setState(prev => ({ ...prev, tasks: [...prev.tasks, nt] }));
-        toast.success('Task created', {
-          description: `${nt.title} has been created`
-        });
-      }
-      setSync('ok');
-    } catch (e) {
-      setSync('error');
-      toast.error(t.id ? 'Failed to update task' : 'Failed to create task', {
-        description: e instanceof Error ? e.message : 'An unexpected error occurred'
-      });
-      throw e;
-    }
-  };
+      const next = { ...normaliseTrack(t), updatedAt: now };
+      const tracks = fresh.tracks.map(x => x.id === t.id ? next : x);
+      await sheetsRewrite('GoalTracks', tracks.map(trackRow));
 
-  const deleteTask = async (id: string) => {
-    setSync('syncing');
-    try {
-      const taskToDelete = state.tasks.find(t => t.id === id);
-      const tasks = state.tasks.filter(t => t.id !== id);
-      await sheetsRewrite('Tasks', tasks.map(t => [t.id, t.title, t.product, t.sprintId, t.status, t.priority, t.assigneeId, t.desc, t.createdAt, t.updatedAt]));
-      setState(prev => ({ ...prev, tasks }));
+      // The log is what reports use to work out progress made over a period
+      const changed = prev.progress !== next.progress || prev.health !== next.health || prev.note !== next.note;
+      const entry = changed ? logEntry(next, now) : null;
+      if (entry) await sheetsAppend('ProgressLog', [logRow(entry)]);
+
+      setState(s => ({ ...s, goals: fresh.goals, tracks, log: entry ? [...s.log, entry] : s.log }));
       setSync('ok');
-      toast.success('Task deleted', {
-        description: taskToDelete ? `${taskToDelete.title} has been deleted` : 'Task deleted successfully'
-      });
+      toast.success('Progress updated', { description: `${next.product}: ${next.progress}%` });
     } catch (e) {
       setSync('error');
-      toast.error('Failed to delete task', {
+      toast.error('Failed to update progress', {
         description: e instanceof Error ? e.message : 'An unexpected error occurred'
       });
       throw e;
@@ -222,7 +227,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <DataContext.Provider value={{ state, syncStatus, loadAll, addMember, removeMember, addSprint, removeSprint, setActiveSprint, saveTask, deleteTask, activeSprint }}>
+    <DataContext.Provider value={{ state, syncStatus, loadAll, addMember, updateMember, removeMember, saveGoal, deleteGoal, saveTrack }}>
       {children}
     </DataContext.Provider>
   );

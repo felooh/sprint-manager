@@ -5,8 +5,8 @@ import { Toaster } from 'sonner';
 import { Providers } from '@/components/Providers';
 
 export const metadata: Metadata = {
-  title: 'Sprint Manager — Afyangu & P360',
-  description: 'Sprint management dashboard for Afyangu Web, Afyangu Mobile, and P360 Mobile',
+  title: 'Delivery Tracker — Afyangu & P360',
+  description: 'Goal progress and reporting for Afyangu Web, Afyangu Mobile, and P360 Mobile App',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -1,87 +1,98 @@
 'use client';
 
-import { useState } from 'react';
+import { useSyncExternalStore } from 'react';
 import { useData } from '@/lib/data-context';
+import { PRODUCTS, QUARTERS } from '@/lib/types';
 import { SyncBadge } from '@/components/ui';
-import Overview  from '@/components/Overview';
-import Board     from '@/components/Board';
-import TaskList  from '@/components/TaskList';
-import Team      from '@/components/Team';
-import Sprints   from '@/components/Sprints';
-import Report    from '@/components/Report';
-import { RefreshCw, LogOut } from 'lucide-react';
+import Dashboard     from '@/components/Dashboard';
+import ProductReport from '@/components/ProductReport';
+import Team          from '@/components/Team';
+import { RefreshCw, LogOut, ListChecks } from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
 
 const TABS = [
-  { id: 'overview', label: 'Overview'     },
-  { id: 'board',    label: 'Sprint Board' },
-  { id: 'tasks',    label: 'All Tasks'    },
-  { id: 'team',     label: 'Team'         },
-  { id: 'sprints',  label: 'Sprints'      },
-  { id: 'report',   label: 'Report'       },
+  { id: 'dashboard', label: 'Dashboard'    },
+  { id: 'report',    label: 'Report'       },
+  { id: 'team',      label: 'Team'         },
 ];
 
+// The current view lives in the URL hash, so it survives a page reload and a
+// report can be shared or bookmarked as a link.
+const subscribeToHash = (onChange: () => void) => {
+  window.addEventListener('hashchange', onChange);
+  return () => window.removeEventListener('hashchange', onChange);
+};
+
+function setView(key: string, value: string) {
+  const params = new URLSearchParams(window.location.hash.slice(1));
+  if (value) params.set(key, value);
+  else params.delete(key);
+  window.location.hash = params.toString();
+}
+
 export default function Home() {
-  const { syncStatus, loadAll, activeSprint } = useData();
+  const { syncStatus, loadAll } = useData();
   const { data: session } = useSession();
-  const [tab, setTab] = useState('overview');
+  const hash = useSyncExternalStore(subscribeToHash, () => window.location.hash, () => '');
+
+  const params = new URLSearchParams(hash.slice(1));
+  const view = (key: string, allowed: string[]) => {
+    const value = params.get(key) ?? '';
+    return allowed.includes(value) ? value : '';
+  };
+  const tab = view('tab', TABS.map(t => t.id)) || 'dashboard';
+  const product = view('product', PRODUCTS);
+  const quarter = view('quarter', QUARTERS);
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-6">
-      <div className="flex items-start justify-between mb-6 flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Sprint Manager</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Afyangu Web &nbsp;·&nbsp; Afyangu Mobile &nbsp;·&nbsp; P360 Mobile</p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          {session?.user?.email && (
-            <span className="text-xs text-gray-500 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-200">
-              {session.user.email}
-            </span>
-          )}
-          {activeSprint && (
-            <span className="text-xs bg-blue-50 text-blue-700 border border-blue-200 px-3 py-1 rounded-full font-medium">
-              Active: {activeSprint.name}
-            </span>
-          )}
-          <SyncBadge status={syncStatus} />
-          <button onClick={loadAll} className="flex items-center gap-1.5 text-sm px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors bg-white">
-            <RefreshCw size={13} className={syncStatus === 'loading' || syncStatus === 'syncing' ? 'animate-spin' : ''} />
-            Refresh
-          </button>
-          <button
-            onClick={() => signOut({ callbackUrl: '/login' })}
-            className="flex items-center gap-1.5 text-sm px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-red-50 hover:border-red-200 hover:text-red-600 transition-colors bg-white text-gray-700"
-            title="Sign out"
-          >
-            <LogOut size={13} />
-            Sign out
-          </button>
-        </div>
-      </div>
+    <div>
+      <header className="no-print sticky top-0 z-40 bg-white border-b border-gray-200">
+        <div className="max-w-6xl mx-auto px-4 py-2.5 flex items-center gap-x-6 gap-y-2 flex-wrap">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-gray-900 text-white flex items-center justify-center flex-shrink-0">
+              <ListChecks size={17} />
+            </div>
+            <h1 className="text-base font-semibold text-gray-900">Delivery Tracker</h1>
+          </div>
 
-      <div className="flex gap-1 mb-6 bg-gray-100 p-1 rounded-xl w-fit flex-wrap">
-        {TABS.map(t => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`px-4 py-2 text-sm rounded-lg transition-all font-medium ${
-              tab === t.id ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+          <nav className="flex gap-1 order-last sm:order-none w-full sm:w-auto">
+            {TABS.map(t => (
+              <button
+                key={t.id}
+                onClick={() => setView('tab', t.id === 'dashboard' ? '' : t.id)}
+                aria-current={tab === t.id ? 'page' : undefined}
+                className={`px-3 py-1.5 text-sm rounded-lg transition-colors font-medium ${
+                  tab === t.id ? 'bg-gray-100 text-gray-900' : 'text-gray-500 hover:text-gray-900'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </nav>
 
-      <div>
-        {tab === 'overview' && <Overview />}
-        {tab === 'board'    && <Board />}
-        {tab === 'tasks'    && <TaskList />}
-        {tab === 'team'     && <Team />}
-        {tab === 'sprints'  && <Sprints />}
-        {tab === 'report'   && <Report />}
-      </div>
+          <div className="flex items-center gap-2 ml-auto">
+            <SyncBadge status={syncStatus} />
+            {session?.user?.email && <span className="hidden md:inline text-xs text-gray-500 max-w-48 truncate">{session.user.email}</span>}
+            <button onClick={loadAll} aria-label="Refresh" title="Refresh" className="p-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-gray-700">
+              <RefreshCw size={14} className={syncStatus === 'loading' || syncStatus === 'syncing' ? 'animate-spin' : ''} />
+            </button>
+            <button
+              onClick={() => signOut({ callbackUrl: '/login' })}
+              aria-label="Sign out"
+              title="Sign out"
+              className="p-2 border border-gray-200 rounded-lg hover:bg-red-50 hover:border-red-200 hover:text-red-600 transition-colors text-gray-700"
+            >
+              <LogOut size={14} />
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-6xl mx-auto px-4 py-6">
+        {tab === 'dashboard' && <Dashboard product={product} onSelectProduct={p => setView('product', p)} quarter={quarter} onSelectQuarter={q => setView('quarter', q)} />}
+        {tab === 'report'    && <ProductReport product={product} onSelectProduct={p => setView('product', p)} quarter={quarter} onSelectQuarter={q => setView('quarter', q)} />}
+        {tab === 'team'      && <Team />}
+      </main>
     </div>
   );
 }

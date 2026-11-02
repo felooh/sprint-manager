@@ -23,7 +23,7 @@ export default function AccessDenied() {
           {/* Message */}
           <div className="bg-red-50 border border-red-100 rounded-xl p-4 mb-6">
             <p className="text-sm text-red-800">
-              Only team members from Afyangu and P360 can access the Sprint Manager.
+              Only team members from Afyangu and P360 can access the Delivery Tracker.
               If you believe this is an error, please contact your administrator.
             </p>
           </div>

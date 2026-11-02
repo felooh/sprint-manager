@@ -9,7 +9,12 @@ body {
 }
 
 @media print {
-  nav, button, select, .no-print {
+  * {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  nav, button, select, .no-print, [data-sonner-toaster] {
     display: none !important;
   }
 }

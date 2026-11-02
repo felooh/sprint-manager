@@ -133,12 +133,8 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === 'rewrite') {
-      // Clear data rows first
-      await fetch(
-        `${BASE}/values/${encodeURIComponent(sheetName + '!A2:Z')}:clear`,
-        { method: 'POST', headers }
-      );
-      // Write new rows if any
+      // Write first, then clear what's left below. Clearing first would lose the
+      // whole tab if the write then failed.
       if (values && values.length > 0) {
         const r = await fetch(
           `${BASE}/values/${encodeURIComponent(sheetName + '!A2')}?valueInputOption=RAW`,
@@ -146,6 +142,16 @@ export async function POST(req: NextRequest) {
         );
         const d = await r.json();
         if (!r.ok) throw new Error(JSON.stringify(d));
+      }
+      const firstUnused = 2 + (values?.length ?? 0);
+      const cleared = await fetch(
+        `${BASE}/values/${encodeURIComponent(`${sheetName}!A${firstUnused}:Z`)}:clear`,
+        { method: 'POST', headers }
+      );
+      if (!cleared.ok) {
+        const text = await cleared.text();
+        // Past the last row of the tab there is nothing left to clear
+        if (!text.includes('exceeds grid limits')) throw new Error(text);
       }
       return NextResponse.json({ ok: true });
     }
@@ -155,7 +161,7 @@ export async function POST(req: NextRequest) {
       const existing = (meta.sheets ?? []).map(
         (s: { properties: { title: string } }) => s.properties.title
       );
-      const needed   = ['Members', 'Sprints', 'Tasks', 'AllowedEmails'];
+      const needed   = ['Members', 'AllowedEmails', 'Goals', 'GoalTracks', 'ProgressLog'];
       const toCreate = needed.filter(n => !existing.includes(n));
 
       if (toCreate.length > 0) {
@@ -167,9 +173,10 @@ export async function POST(req: NextRequest) {
         // Write headers for new sheets
         const headerMap: Record<string, string[]> = {
           Members: ['ID','Name','Role','Product'],
-          Sprints: ['ID','Name','Start','End','Active'],
-          Tasks:   ['ID','Title','Product','SprintID','Status','Priority','AssigneeID','Description','CreatedAt','UpdatedAt'],
           AllowedEmails: ['Email'],
+          Goals:       ['ID','Title','Description','Priority','CreatedAt','UpdatedAt','Quarter'],
+          GoalTracks:  ['ID','GoalID','Product','Progress','Status','OwnerIDs','TargetDate','Note','Steps','UpdatedAt'],
+          ProgressLog: ['ID','TrackID','GoalID','Product','Progress','Status','Note','At','By'],
         };
         for (const name of toCreate) {
           await fetch(
@@ -190,6 +197,13 @@ export async function POST(req: NextRequest) {
             { method: 'POST', headers, body: JSON.stringify({ values: initialEmails }) }
           );
         }
+      }
+      // Goals tabs created before the Quarter column existed have no header for it
+      if (!toCreate.includes('Goals')) {
+        await fetch(
+          `${BASE}/values/${encodeURIComponent('Goals!G1')}?valueInputOption=RAW`,
+          { method: 'PUT', headers, body: JSON.stringify({ values: [['Quarter']] }) }
+        );
       }
       return NextResponse.json({ ok: true });
     }
