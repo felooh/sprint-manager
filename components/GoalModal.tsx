@@ -1,9 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { Goal, PRIORITIES, QUARTERS, TASK_STEPS, TRACKING_SCOPES } from '@/lib/types';
+import { Goal, PRIORITIES, QUARTERS, TRACKING_SCOPES } from '@/lib/types';
 import { useData } from '@/lib/data-context';
-import { currentQuarter, formatQuarter } from '@/lib/goals';
+import { currentQuarter, formatQuarter, stepsForProducts } from '@/lib/goals';
 import { Modal } from '@/components/ui';
 
 interface Props {
@@ -27,6 +27,14 @@ export default function GoalModal({ goal, defaultProduct, onCreated, onClose }: 
   const [saving, setSaving] = useState(false);
 
   const toggle = (list: string[], item: string) => list.includes(item) ? list.filter(x => x !== item) : [...list, item];
+  // The optional steps depend on the product: a P360-only task offers the P360
+  // BE deployment step, not the Afyangu one, so changing the product drops any
+  // optional step that no longer applies
+  const selectProducts = (scope: string[]) => {
+    const applicable = new Set(stepsForProducts(scope).map(s => s.key));
+    setProducts(scope);
+    setOptionalSteps(l => l.filter(k => applicable.has(k)));
+  };
   const isScope = (scope: string[]) => scope.length === products.length && scope.every(p => products.includes(p));
   const validScope = TRACKING_SCOPES.some(isScope);
   const removing = tracked.filter(p => !products.includes(p));
@@ -104,7 +112,7 @@ export default function GoalModal({ goal, defaultProduct, onCreated, onClose }: 
             <div className="space-y-2">
               {TRACKING_SCOPES.map(scope => (
                 <label key={scope.join()} className="flex items-center gap-2 text-sm text-gray-800">
-                  <input type="radio" name="goal-scope" checked={isScope(scope)} onChange={() => setProducts(scope)} />
+                  <input type="radio" name="goal-scope" checked={isScope(scope)} onChange={() => selectProducts(scope)} />
                   {scope.length > 1 ? scope.join(' + ') : `${scope[0]} only`}
                 </label>
               ))}
@@ -120,7 +128,7 @@ export default function GoalModal({ goal, defaultProduct, onCreated, onClose }: 
               <fieldset>
                 <legend className="block text-xs font-medium text-gray-600 mb-1.5">Optional steps this task needs</legend>
                 <div className="space-y-1.5">
-                  {TASK_STEPS.filter(st => st.optional).map(st => (
+                  {stepsForProducts(products).filter(st => st.optional).map(st => (
                     <label key={st.key} className="flex items-center gap-2 text-sm text-gray-800">
                       <input type="checkbox" checked={optionalSteps.includes(st.key)} onChange={() => setOptionalSteps(l => toggle(l, st.key))} />
                       {st.label}

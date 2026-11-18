@@ -65,12 +65,20 @@ export const TRACKING_SCOPES = [
   ['P360 Mobile App'],
   ['Afyangu Web', 'Afyangu Mobile'],
 ];
+export interface TaskStep {
+  key: string;
+  label: string;
+  optional: boolean;
+  products?: string[]; // when set, the step only applies to these products
+}
+
 // Every goal task goes through these steps, in this order
-export const TASK_STEPS = [
+export const TASK_STEPS: TaskStep[] = [
   { key: 'development', label: 'Development',                 optional: false },
   { key: 'qa',          label: 'QA Testing',                  optional: false },
   { key: 'security',    label: 'Security Checks and Testing', optional: false },
-  { key: 'afyangu-be',  label: 'Afyangu BE Deployment',       optional: true  },
+  { key: 'afyangu-be',  label: 'Afyangu BE Deployment',       optional: true,  products: ['Afyangu Web', 'Afyangu Mobile'] },
+  { key: 'p360-be',     label: 'P360 BE Deployment',          optional: true,  products: ['P360 Mobile App'] },
   { key: 'upstream-be', label: 'Upstream BE Deployment',      optional: true  },
   { key: 'frontend',    label: 'Frontend Deployment',         optional: false },
 ];

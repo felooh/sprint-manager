@@ -4,7 +4,7 @@ import { createContext, useContext, useState, useCallback, useEffect, ReactNode 
 import { useSession } from 'next-auth/react';
 import { AppState, Goal, GoalTrack, Member, SyncStatus } from './types';
 import { uid, sheetsBatchGet, sheetsAppend, sheetsRewrite, ensureSheets } from './sheets';
-import { goalRow, trackRow, logRow, parseGoal, parseTrack, parseLog, normaliseTrack, newSteps } from './goals';
+import { goalRow, trackRow, logRow, parseGoal, parseTrack, parseLog, normaliseTrack, normaliseProductName, newSteps } from './goals';
 import { toast } from 'sonner';
 
 interface DataContextValue {
@@ -28,9 +28,6 @@ export interface NewTrackSetup {
 
 const GOAL_RANGES = ['Goals!A2:G', 'GoalTracks!A2:J'];
 
-// Existing sheet rows use the old product name
-const productName = (p: string) => (p === 'P360 Mobile' ? 'P360 Mobile App' : p);
-
 const DataContext = createContext<DataContextValue | null>(null);
 
 export function DataProvider({ children }: { children: ReactNode }) {
@@ -47,7 +44,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const [mRows, gRows, gtRows, lRows] = await sheetsBatchGet(['Members!A2:D', ...GOAL_RANGES, 'ProgressLog!A2:I']);
 
       setState({
-        members: mRows.filter(r => r[0]).map(r => ({ id: r[0], name: r[1]||'', role: r[2]||'', product: productName(r[3]||'') })),
+        members: mRows.filter(r => r[0]).map(r => ({ id: r[0], name: r[1]||'', role: r[2]||'', product: normaliseProductName(r[3]||'') })),
         goals:  gRows.filter(r => r[0]).map(parseGoal),
         tracks: gtRows.filter(r => r[0]).map(parseTrack),
         log:    lRows.filter(r => r[0]).map(parseLog),

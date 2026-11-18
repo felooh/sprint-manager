@@ -4,7 +4,7 @@ import { AVATAR_COLORS, PRODUCT_BADGE, PRIORITY_BADGE, HEALTH_BADGE } from '@/li
 import { GoalStep } from '@/lib/types';
 import { stepLabel } from '@/lib/goals';
 import { ReactNode, useEffect, useRef } from 'react';
-import { X } from 'lucide-react';
+import { TrendingDown, TrendingUp, X } from 'lucide-react';
 
 export function Badge({ label, className }: { label: string; className?: string }) {
   return (
@@ -59,6 +59,75 @@ export function ProgressBar({ pct, color = 'bg-green-600', size = 'md' }: { pct:
     <div role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} className={`${size === 'sm' ? 'h-1.5' : 'h-2'} bg-gray-100 rounded-full overflow-hidden mt-1.5`}>
       <div className={`h-full ${color} rounded-full transition-all duration-500`} style={{ width: `${pct}%` }} />
     </div>
+  );
+}
+
+// ── Charts (hand-rolled SVG so the report stays dependency-free) ──────────
+
+export function RadialProgress({ pct, size = 104, stroke = 10 }: { pct: number; size?: number; stroke?: number }) {
+  const clamped = Math.min(100, Math.max(0, pct));
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  return (
+    <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
+      <svg width={size} height={size} className="-rotate-90">
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#f3f4f6" strokeWidth={stroke} />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#111827" strokeWidth={stroke} strokeLinecap="round" strokeDasharray={`${(clamped / 100) * c} ${c}`} />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className="text-2xl font-semibold text-gray-900 tabular-nums">{clamped}%</span>
+        <span className="text-[10px] text-gray-400">complete</span>
+      </div>
+    </div>
+  );
+}
+
+// A minimal trend line. The 0–100 scale is fixed so lines are comparable
+export function Sparkline({ points, className = '' }: { points: number[]; className?: string }) {
+  const pts = points.length > 1 ? points : [0, 0];
+  const W = 100, H = 32;
+  const step = W / (pts.length - 1);
+  const y = (v: number) => H - 3 - (Math.min(100, Math.max(0, v)) / 100) * (H - 6);
+  const line = pts.map((p, i) => `${i ? 'L' : 'M'}${(i * step).toFixed(2)} ${y(p).toFixed(2)}`).join(' ');
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className={`block ${className}`} aria-hidden="true">
+      <path d={`${line} L ${W} ${H} L 0 ${H} Z`} fill="#111827" opacity={0.06} />
+      <path d={line} fill="none" stroke="#111827" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+    </svg>
+  );
+}
+
+export function TrendChart({ points, from, to }: { points: number[]; from: string; to: string }) {
+  const pts = points.length > 1 ? points : [points[0] ?? 0, points[0] ?? 0];
+  const W = 640, H = 150, L = 28, R = 8, T = 8, B = 20;
+  const iw = W - L - R, ih = H - T - B;
+  const x = (i: number) => L + (i / (pts.length - 1)) * iw;
+  const y = (v: number) => T + ih - (Math.min(100, Math.max(0, v)) / 100) * ih;
+  const line = pts.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${y(p).toFixed(1)}`).join(' ');
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label={`Overall progress trend, ${from} to ${to}`}>
+      {[0, 25, 50, 75, 100].map(g => (
+        <g key={g}>
+          <line x1={L} x2={W - R} y1={y(g)} y2={y(g)} stroke={g === 0 ? '#e5e7eb' : '#f3f4f6'} />
+          <text x={L - 5} y={y(g) + 3} textAnchor="end" fontSize={9} fill="#9ca3af">{g}</text>
+        </g>
+      ))}
+      <path d={`${line} L ${x(pts.length - 1).toFixed(1)} ${y(0)} L ${L} ${y(0)} Z`} fill="#111827" opacity={0.05} />
+      <path d={line} fill="none" stroke="#111827" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx={x(pts.length - 1)} cy={y(pts[pts.length - 1])} r={3} fill="#111827" />
+      <text x={L} y={H - 5} fontSize={9} fill="#9ca3af">{from}</text>
+      <text x={W - R} y={H - 5} textAnchor="end" fontSize={9} fill="#9ca3af">{to}</text>
+    </svg>
+  );
+}
+
+export function DeltaChip({ value }: { value: number }) {
+  if (value === 0) return <span className="text-xs text-gray-400 tabular-nums">±0%</span>;
+  const Icon = value > 0 ? TrendingUp : TrendingDown;
+  return (
+    <span className={`inline-flex items-center gap-0.5 text-xs font-medium tabular-nums ${value > 0 ? 'text-green-700' : 'text-red-700'}`}>
+      <Icon size={12} /> {value > 0 ? '+' : ''}{value}%
+    </span>
   );
 }
 

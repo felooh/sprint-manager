@@ -2,14 +2,28 @@
 
 import { useState } from 'react';
 import { useData } from '@/lib/data-context';
-import { Goal, GoalTrack, HEALTHS, HEALTH_FILL, PRODUCTS, PRODUCT_FILL, PRIORITIES, QUARTERS, TRACKING_SCOPES } from '@/lib/types';
-import { averageProgress, averageSteps, countGoals, daysSince, daysUntil, devsForProduct, formatChange, formatDate, formatQuarter, isOverdue, needsAttention, progressBefore } from '@/lib/goals';
-import { Avatar, HealthBadge, MetricCard, PriorityBadge, ProductBadge, ProgressBar, Spinner, StepBreakdown } from '@/components/ui';
+import { Goal, GoalTrack, ProgressEntry, HEALTHS, HEALTH_FILL, PRODUCTS, PRODUCT_FILL, PRIORITIES, QUARTERS, TRACKING_SCOPES } from '@/lib/types';
+import { averageProgress, countGoals, daysSince, daysUntil, devsForProduct, formatDate, formatQuarter, isOverdue, needsAttention, ownerNames, progressBefore } from '@/lib/goals';
+import { Avatar, DeltaChip, HealthBadge, PriorityBadge, ProductBadge, ProgressBar, Sparkline, Spinner, StepBreakdown } from '@/components/ui';
 import GoalModal from '@/components/GoalModal';
 import TrackModal from '@/components/TrackModal';
-import { AlertTriangle, ChevronDown, ChevronsDownUp, ChevronsUpDown, Pencil, Plus, Target } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronsDownUp, ChevronsUpDown, Clock, Pencil, Plus, Search, Target } from 'lucide-react';
 
 const WEEK = 7;
+const DUE_SOON_DAYS = 14;
+
+// Where a track (or a set of tracks) stood `i` days ago, from the last log entry before then
+const weekChange = (t: GoalTrack, log: ProgressEntry[]) => t.progress - progressBefore(t, log, WEEK).baseline;
+const trendFor = (tracks: GoalTrack[], log: ProgressEntry[]): number[] => {
+  const pts: number[] = [];
+  if (tracks.length) {
+    for (let i = WEEK; i >= 1; i--) {
+      pts.push(Math.round(tracks.reduce((s, t) => s + progressBefore(t, log, i).baseline, 0) / tracks.length));
+    }
+  }
+  pts.push(averageProgress(tracks));
+  return pts;
+};
 
 interface Props {
   product: string;
@@ -82,37 +96,43 @@ export default function Dashboard({ product, onSelectProduct, quarter, onSelectQ
 
       {/* Product selector */}
       <div className="no-print grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        {['', ...PRODUCTS].map(p => {
-          const tracks = p ? visibleTracks.filter(t => t.product === p) : visibleTracks;
-          const pct = averageProgress(tracks);
-          const attention = tracks.filter(needsAttention).length;
-          const devs = p ? devsForProduct(state, p).length : state.members.length;
-          const selected = product === p;
-          return (
-            <button
-              key={p}
-              onClick={() => onSelectProduct(selected ? '' : p)}
-              aria-pressed={selected}
-              className={`text-left bg-white border rounded-xl p-4 shadow-sm transition-colors ${selected ? 'border-gray-900 ring-1 ring-gray-900' : 'border-gray-200 hover:border-gray-400'}`}
-            >
-              <div className="flex items-center justify-between gap-2 mb-2">
-                <span className="flex items-center gap-2 font-medium text-gray-900 min-w-0">
-                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${PRODUCT_FILL[p] ?? 'bg-gray-900'}`} />
-                  <span className="truncate">{p || 'All products'}</span>
-                </span>
-                <span className="text-xl font-semibold text-gray-900 tabular-nums">{pct}%</span>
-              </div>
-              <ProgressBar pct={pct} color={PRODUCT_FILL[p] ?? 'bg-gray-900'} />
-              <div className="flex flex-wrap items-center gap-x-2 text-xs text-gray-500 mt-2">
-                <span>{countGoals(tracks)} goal task{countGoals(tracks) === 1 ? '' : 's'} · {devs} dev{devs === 1 ? '' : 's'}</span>
-                {attention > 0 && <span className="text-red-700 font-medium flex items-center gap-1"><AlertTriangle size={12} /> {attention} need{attention === 1 ? 's' : ''} attention</span>}
-              </div>
-            </button>
-          );
-        })}
+          {['', ...PRODUCTS].map(p => {
+            const tracks = p ? visibleTracks.filter(t => t.product === p) : visibleTracks;
+            const pct = averageProgress(tracks);
+            const attention = tracks.filter(needsAttention).length;
+            const devs = p ? devsForProduct(state, p).length : state.members.length;
+            const selected = product === p;
+            const delta = tracks.length ? pct - averageProgress(tracks.map(t => ({ progress: t.progress - weekChange(t, state.log) }))) : 0;
+            return (
+              <button
+                key={p}
+                onClick={() => onSelectProduct(selected ? '' : p)}
+                aria-pressed={selected}
+                className={`text-left bg-white border rounded-xl p-4 shadow-sm transition-colors ${selected ? 'border-gray-900 ring-1 ring-gray-900' : 'border-gray-200 hover:border-gray-400'}`}
+              >
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <span className="flex items-center gap-2 font-medium text-gray-900 min-w-0">
+                    <span className={`w-2 h-2 rounded-full flex-shrink-0 ${PRODUCT_FILL[p] ?? 'bg-gray-900'}`} />
+                    <span className="truncate">{p || 'All products'}</span>
+                  </span>
+                  <span className="text-xl font-semibold text-gray-900 tabular-nums">{pct}%</span>
+                </div>
+                <ProgressBar pct={pct} color={PRODUCT_FILL[p] ?? 'bg-gray-900'} />
+                <div className="flex items-center gap-2 mt-2">
+                  <Sparkline points={trendFor(tracks, state.log)} className="flex-1 h-6 min-w-0" />
+                  <DeltaChip value={delta} />
+                </div>
+                <div className="flex flex-wrap items-center gap-x-2 text-xs text-gray-500 mt-2">
+                  <span>{countGoals(tracks)} goal task{countGoals(tracks) === 1 ? '' : 's'} · {devs} dev{devs === 1 ? '' : 's'}</span>
+                  {attention > 0 && <span className="text-red-700 font-medium flex items-center gap-1"><AlertTriangle size={12} /> {attention} need{attention === 1 ? 's' : ''} attention</span>}
+                </div>
+              </button>
+            );
+          })}
       </div>
 
-      {scopedTracks.length > 0 && <Summary tracks={scopedTracks} />}
+      {scopedTracks.length > 0 && <AttentionBoard tracks={scopedTracks} onOpenTrack={setOpenTrackId} />}
+      {scopedTracks.length > 0 && <RecentActivity tracks={scopedTracks} />}
 
       {product
         ? <ProductView key={listKey} product={product} visibleTracks={visibleTracks} cards={cards} onAdd={() => setEditGoal(null)} />
@@ -124,30 +144,109 @@ export default function Dashboard({ product, onSelectProduct, quarter, onSelectQ
   );
 }
 
-function Summary({ tracks }: { tracks: GoalTrack[] }) {
+// The dashboard is the day-to-day view: what needs doing now, what is due next,
+// and what the team has been up to. Period analysis lives in the Report tab.
+function AttentionBoard({ tracks, onOpenTrack }: { tracks: GoalTrack[]; onOpenTrack: (id: string) => void }) {
   const { state } = useData();
-  const overall = averageProgress(tracks);
-  const before = averageProgress(tracks.map(t => ({ progress: progressBefore(t, state.log, WEEK).baseline })));
-  const stuck = tracks.filter(t => t.health === 'At Risk' || t.health === 'Blocked').length;
-  const overdue = tracks.filter(isOverdue).length;
+  const attention = tracks.filter(needsAttention);
+  const due = tracks
+    .filter(t => t.targetDate && t.health !== 'Done' && !isOverdue(t) && daysUntil(t.targetDate) <= DUE_SOON_DAYS)
+    .sort((a, b) => a.targetDate.localeCompare(b.targetDate));
+  const titleFor = (t: GoalTrack) => state.goals.find(g => g.id === t.goalId)?.title ?? 'Goal task';
 
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm space-y-4">
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <MetricCard label={`Overall · ${formatChange(overall - before)} this week`} value={`${overall}%`} />
-        <MetricCard label="Goal tasks" value={countGoals(tracks)} />
-        <MetricCard label="Done" value={tracks.filter(t => t.health === 'Done').length} valueClass="text-green-700" />
-        <MetricCard label="At risk / blocked" value={stuck} valueClass={stuck ? 'text-red-700' : 'text-gray-900'} />
-        <MetricCard label="Overdue" value={overdue} valueClass={overdue ? 'text-red-700' : 'text-gray-900'} />
-      </div>
-      <div>
-        <h3 className="text-sm font-medium text-gray-900">Progress by step</h3>
-        <p className="text-xs text-gray-500 mb-2">Average across the goal tasks that use each step, showing where work is waiting.</p>
-        <StepBreakdown steps={averageSteps(tracks)} />
-      </div>
+    <div className="grid lg:grid-cols-2 gap-5">
+      <section className="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
+        <h3 className="flex items-center gap-2 font-medium text-gray-900 mb-3">
+          <AlertTriangle size={15} className="text-red-500" /> Needs attention ({attention.length})
+        </h3>
+        {!attention.length ? <p className="text-sm text-gray-400">Nothing needs attention right now.</p> : (
+          <div className="space-y-2">
+            {attention.map(t => (
+              <button key={t.id} onClick={() => onOpenTrack(t.id)} className="w-full text-left border border-gray-100 rounded-lg p-3 hover:border-gray-300 transition-colors">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-medium text-gray-900 truncate">{titleFor(t)}</span>
+                  <span className="text-xs text-gray-500 tabular-nums flex-shrink-0">{t.progress}%</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 mt-1.5 text-xs text-gray-500">
+                  <ProductBadge product={t.product} />
+                  <span className={isOverdue(t) ? 'text-red-700 font-medium' : ''}>
+                    {isOverdue(t) ? `Overdue by ${-daysUntil(t.targetDate)}d` : t.health}
+                  </span>
+                  {t.targetDate && <span>· target {formatDate(t.targetDate)}</span>}
+                  {ownerNames(t, state.members) && <span>· {ownerNames(t, state.members)}</span>}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
+        <h3 className="flex items-center gap-2 font-medium text-gray-900 mb-3">
+          <Clock size={15} className="text-blue-600" /> Due in the next {DUE_SOON_DAYS} days ({due.length})
+        </h3>
+        {!due.length ? <p className="text-sm text-gray-400">Nothing due soon.</p> : (
+          <div className="space-y-2">
+            {due.map(t => (
+              <button key={t.id} onClick={() => onOpenTrack(t.id)} className="w-full text-left border border-gray-100 rounded-lg p-3 hover:border-gray-300 transition-colors">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-medium text-gray-900 truncate">{titleFor(t)}</span>
+                  <span className="text-xs text-gray-500 tabular-nums flex-shrink-0">{daysUntil(t.targetDate)}d left</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 mt-1.5 text-xs text-gray-500">
+                  <ProductBadge product={t.product} />
+                  <span>{formatDate(t.targetDate)}</span>
+                  {ownerNames(t, state.members) && <span>· {ownerNames(t, state.members)}</span>}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 }
+
+function RecentActivity({ tracks }: { tracks: GoalTrack[] }) {
+  const { state } = useData();
+  const ids = new Set(tracks.map(t => t.id));
+  const entries = state.log.filter(e => ids.has(e.trackId)).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 8);
+
+  return (
+    <section className="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
+      <h3 className="font-medium text-gray-900 mb-1">Recent activity</h3>
+      {!entries.length ? <p className="text-sm text-gray-400 mt-2">No updates yet.</p> : (
+        <ul className="divide-y divide-gray-50 mt-2">
+          {entries.map(e => {
+            const goal = state.goals.find(g => g.id === e.goalId);
+            const who = e.by.includes('@') ? e.by.split('@')[0] : e.by;
+            return (
+              <li key={e.id} className="flex items-center gap-2 py-2 text-sm flex-wrap">
+                <span className="font-medium text-gray-900">{who}</span>
+                <span className="text-gray-500">updated</span>
+                <span className="font-medium text-gray-900">{goal?.title ?? 'a goal task'}</span>
+                <ProductBadge product={e.product} />
+                <span className="text-gray-500 tabular-nums">{e.progress}%</span>
+                <HealthBadge health={e.health} />
+                <span className="ml-auto text-xs text-gray-400">{timeAgo(e.at)}</span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+const timeAgo = (iso: string): string => {
+  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+};
 
 interface CardControls {
   expandedIds: string[];
@@ -221,7 +320,10 @@ function AllProducts({ goals, cards, onAdd }: { goals: Goal[]; cards: CardContro
         <p className="text-xs text-gray-500 mb-4">Click a task to see its steps and details. Select a product above for its developers.</p>
         {goals.length > 0 && (
           <div className="no-print flex flex-wrap items-center gap-2 mb-2">
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search tasks..." aria-label="Search goal tasks" className="flex-1 min-w-40 border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:border-gray-400" />
+            <div className="relative flex-1 min-w-40">
+              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search tasks..." aria-label="Search goal tasks" className="w-full border border-gray-200 rounded-lg pl-8 pr-3 py-1.5 text-sm bg-white focus:outline-none focus:border-gray-400" />
+            </div>
             <select value={fscope} onChange={e => setFscope(e.target.value)} aria-label="Filter by product" className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:border-gray-400">
               <option value="">All products</option>
               {TRACKING_SCOPES.map((scope, i) => <option key={scope.join()} value={i}>{scope.length > 1 ? scope.join(' + ') : `${scope[0]} only`}</option>)}
@@ -437,9 +539,11 @@ function GoalCard({ goal, tracks, alwaysLabel, cards }: { goal: Goal; tracks: Go
 }
 
 function TrackBar({ track: t }: { track: GoalTrack }) {
+  const { state } = useData();
   return (
     <div className="flex items-center gap-3">
       <div className="flex-1 -mt-1.5"><ProgressBar pct={t.progress} color={HEALTH_FILL[t.health]} /></div>
+      <Sparkline points={trendFor([t], state.log)} className="w-16 h-5 flex-shrink-0" />
       <span className="text-sm font-semibold text-gray-900 w-10 text-right tabular-nums">{t.progress}%</span>
     </div>
   );
@@ -468,7 +572,12 @@ function TrackDetails({ track: t }: { track: GoalTrack }) {
             {isOverdue(t) ? `Overdue by ${-(dueIn ?? 0)}d · ` : 'Target '}{formatDate(t.targetDate)}
           </span>
         )}
-        {change !== 0 && <span className={change > 0 ? 'text-green-700 font-medium' : 'text-red-700 font-medium'}>{formatChange(change)} this week</span>}
+        {change !== 0 && (
+          <span className="flex items-center gap-1">
+            <DeltaChip value={change} />
+            <span>this week</span>
+          </span>
+        )}
         {t.updatedAt && <span>Updated {daysSince(t.updatedAt) === 0 ? 'today' : `${daysSince(t.updatedAt)}d ago`}</span>}
       </div>
 

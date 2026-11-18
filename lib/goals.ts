@@ -3,6 +3,9 @@ import { AppState, Goal, GoalStep, GoalTrack, Member, ProgressEntry, TASK_STEPS 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 // ── Sheet rows ────────────────────────────────────────────────────────────
+// Existing sheet rows use the old product name
+export const normaliseProductName = (p: string) => (p === 'P360 Mobile' ? 'P360 Mobile App' : p);
+
 const clampPercent = (n: number) => Math.min(100, Math.max(0, Math.round(n) || 0));
 
 export const newSteps = (progress = 0): GoalStep[] =>
@@ -30,10 +33,11 @@ export const parseGoal = (r: string[]): Goal => ({
   id: r[0], title: r[1]||'', desc: r[2]||'', priority: r[3]||'Medium', createdAt: r[4]||'', updatedAt: r[5]||'', quarter: r[6]||'',
 });
 
-export const parseTrack = (r: string[]): GoalTrack => ({
+// Normalising on load fixes rows written before a step became product-specific
+export const parseTrack = (r: string[]): GoalTrack => normaliseTrack({
   id: r[0],
   goalId: r[1]||'',
-  product: r[2]||'',
+  product: normaliseProductName(r[2]||''),
   progress: Number(r[3]) || 0,
   health: r[4]||'Not Started',
   ownerIds: (r[5]||'').split(',').filter(Boolean),
@@ -44,7 +48,7 @@ export const parseTrack = (r: string[]): GoalTrack => ({
 });
 
 export const parseLog = (r: string[]): ProgressEntry => ({
-  id: r[0], trackId: r[1]||'', goalId: r[2]||'', product: r[3]||'', progress: Number(r[4]) || 0,
+  id: r[0], trackId: r[1]||'', goalId: r[2]||'', product: normaliseProductName(r[3]||''), progress: Number(r[4]) || 0,
   health: r[5]||'', note: r[6]||'', at: r[7]||'', by: r[8]||'',
 });
 
@@ -58,10 +62,21 @@ export const trackRow = (t: GoalTrack) => [
 export const logRow = (e: ProgressEntry) => [e.id, e.trackId, e.goalId, e.product, String(e.progress), e.health, e.note, e.at, e.by];
 
 // ── Progress rules ────────────────────────────────────────────────────────
+// A goal task's steps depend on its product: the BE deployment step only
+// applies to the products it belongs to, so a P360-only task has the P360 BE
+// deployment step instead of the Afyangu one
+export function stepsForProducts(products: string[]): typeof TASK_STEPS {
+  return TASK_STEPS.filter(({ products: stepProducts }) => !stepProducts || stepProducts.some(p => products.includes(p)));
+}
+
 // A track's progress is the average of the steps that apply to it, and only a
 // track with all of those steps at 100% can be Done.
 export function normaliseTrack(t: GoalTrack): GoalTrack {
-  const steps = t.steps.map(s => ({ ...s, progress: clampPercent(s.progress) }));
+  const steps = t.steps.map(s => {
+    const def = TASK_STEPS.find(d => d.key === s.key);
+    const applies = !def?.products || def.products.includes(t.product);
+    return { ...s, progress: clampPercent(s.progress), enabled: applies && s.enabled };
+  });
   const active = steps.filter(s => s.enabled);
   const average = averageProgress(active);
   // Rounding must not turn 99.8% into 100% while a step is still unfinished

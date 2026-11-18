@@ -1,9 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { GoalStep, GoalTrack, HEALTHS, HEALTH_FILL, TASK_STEPS } from '@/lib/types';
+import { GoalStep, GoalTrack, HEALTHS, HEALTH_FILL } from '@/lib/types';
 import { useData } from '@/lib/data-context';
-import { normaliseTrack, formatDate, formatQuarter } from '@/lib/goals';
+import { normaliseTrack, stepsForProducts, formatDate, formatQuarter } from '@/lib/goals';
 import { Modal, ProductBadge, ProgressBar } from '@/components/ui';
 
 interface Props {
@@ -72,7 +72,7 @@ export default function TrackModal({ track, onEditGoal, onClose }: Props) {
 
           <div>
             <div className="space-y-1.5">
-              {TASK_STEPS.map(({ key, label, optional }) => {
+              {stepsForProducts([track.product]).map(({ key, label, optional }) => {
                 const step = form.steps.find(s => s.key === key);
                 if (!step) return null;
                 return (
